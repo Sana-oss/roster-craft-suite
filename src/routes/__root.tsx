@@ -79,11 +79,15 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { name: "viewport", content: "width=device-width, initial-scale=1" },
       { title: "Front Office Roster — Hotel Shift Schedule" },
       { name: "description", content: "Weekly front office shift roster for hotel operations: supervisors, reception, concierge and bell staff." },
-      { property: "og:title", content: "Front Office Roster" },
-      { property: "og:description", content: "Weekly front office shift roster for hotel operations." },
+      { property: "og:title", content: "Front Office Roster — Hotel Shift Schedule" },
+      { property: "og:description", content: "Weekly front office shift roster for hotel operations: supervisors, reception, concierge and bell staff." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
       { name: "twitter:site", content: "@Lovable" },
+      { name: "twitter:title", content: "Front Office Roster — Hotel Shift Schedule" },
+      { name: "twitter:description", content: "Weekly front office shift roster for hotel operations: supervisors, reception, concierge and bell staff." },
+      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/abc00abc-d9f1-4944-a21a-5dd4aa7f02d0/id-preview-3c29d461--2d858882-cb50-45a5-9571-e13a42cf9aba.lovable.app-1782969383924.png" },
+      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/abc00abc-d9f1-4944-a21a-5dd4aa7f02d0/id-preview-3c29d461--2d858882-cb50-45a5-9571-e13a42cf9aba.lovable.app-1782969383924.png" },
     ],
     links: [
       {
