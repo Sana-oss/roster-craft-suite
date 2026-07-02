@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { Lock, Unlock, Hotel, Plus, Trash2, LogOut, Save, Calendar, Phone, ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -334,8 +334,8 @@ export function RosterApp() {
               </thead>
               <tbody>
                 {CATEGORIES.map(cat => (
-                  <>
-                    <tr key={`h-${cat}`}>
+                  <Fragment key={cat}>
+                    <tr>
                       <td colSpan={12 + (isAdmin ? 1 : 0)} className="px-3 py-2 bg-gradient-to-r from-amber-50 to-transparent border-y border-amber-200/60 text-xs font-bold uppercase tracking-widest text-amber-900">
                         {cat}
                       </td>
@@ -408,7 +408,7 @@ export function RosterApp() {
                         )}
                       </tr>
                     ))}
-                  </>
+                  </Fragment>
                 ))}
 
                 {/* Summary rows */}
