@@ -12,6 +12,8 @@ type Category = "Fo Supervisors" | "Fo Shiftleader" | "Reception" | "Concierge" 
 const CATEGORIES: Category[] = ["Fo Supervisors", "Fo Shiftleader", "Reception", "Concierge", "Bell Boy"];
 
 type ShiftCode = "M" | "A" | "N" | "MID" | "DO" | "PL" | "";
+const CLEAR_VALUE = "CLEAR";
+const NONE_VALUE = "NONE";
 const SHIFT_OPTIONS: { code: ShiftCode; label: string; hours: string }[] = [
   { code: "M", label: "Morning", hours: "07:00-15:30" },
   { code: "A", label: "Afternoon", hours: "15:00-23:30" },
@@ -96,7 +98,7 @@ function loadState(): RosterState {
     }
   }
   return {
-    weekStart: iso(startOfSaturday(new Date())),
+    weekStart: "2026-01-03", // stable placeholder; replaced on client mount
     employees: seedEmployees(),
     departures: {},
     arrivals: {},
@@ -135,6 +137,14 @@ export function RosterApp() {
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   }, [state]);
+
+  // Set the real current week on the client only, to avoid SSR hydration mismatch.
+  useEffect(() => {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) return; // user already has a saved week
+    setState(s => ({ ...s, weekStart: iso(startOfSaturday(new Date())) }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const weekDates = useMemo(() => {
     const start = new Date(state.weekStart);
@@ -365,17 +375,25 @@ export function RosterApp() {
                           return (
                             <td key={i} className="px-1.5 py-1.5">
                               {isAdmin ? (
-                                <Select value={code} onValueChange={(v) => updateShift(emp.id, i, v as ShiftCode)}>
+                                <Select
+                                  value={code === "" ? NONE_VALUE : code}
+                                  onValueChange={(v) =>
+                                    updateShift(emp.id, i, (v === CLEAR_VALUE || v === NONE_VALUE ? "" : v) as ShiftCode)
+                                  }
+                                >
                                   <SelectTrigger className="p-0 border-0 shadow-none bg-transparent h-auto focus:ring-0 [&>svg]:hidden w-full">
                                     {cell}
                                   </SelectTrigger>
                                   <SelectContent>
-                                    {SHIFT_OPTIONS.map(o => (
-                                      <SelectItem key={o.code || "clear"} value={o.code}>
-                                        <span className="font-semibold mr-2">{o.code || "—"}</span>
-                                        <span className="text-slate-500 text-xs">{o.label}{o.hours && ` · ${o.hours}`}</span>
-                                      </SelectItem>
-                                    ))}
+                                    {SHIFT_OPTIONS.map(o => {
+                                      const val = o.code === "" ? CLEAR_VALUE : o.code;
+                                      return (
+                                        <SelectItem key={val} value={val}>
+                                          <span className="font-semibold mr-2">{o.code || "—"}</span>
+                                          <span className="text-slate-500 text-xs">{o.label}{o.hours && ` · ${o.hours}`}</span>
+                                        </SelectItem>
+                                      );
+                                    })}
                                   </SelectContent>
                                 </Select>
                               ) : cell}
