@@ -45,7 +45,7 @@ const STORAGE_KEY = "hotel_roster_v1";
 const PASSWORD_STORAGE_KEY = "admin_custom_password";
 
 function getAdminPassword(): string {
-  const custom = localStorage.getItem(PASSWORD_STORAGE_KEY);
+  const custom = typeof window !== "undefined" ? localStorage.getItem(PASSWORD_STORAGE_KEY) : null;
   if (custom) return custom;
   const env = import.meta.env.VITE_ADMIN_PASSWORD;
   if (env) return env;
@@ -467,7 +467,7 @@ export function RosterApp() {
                     <Input id="pw" type="password" value={password} onChange={e => setPassword(e.target.value)}
                       onKeyDown={e => e.key === "Enter" && tryLogin()} placeholder="Enter admin password" autoFocus />
                     <p className="text-xs text-slate-500">
-                      {localStorage.getItem(PASSWORD_STORAGE_KEY)
+                      {typeof window !== "undefined" && localStorage.getItem(PASSWORD_STORAGE_KEY)
                         ? "Custom password is set"
                         : <>Demo password: <code className="px-1 py-0.5 rounded bg-slate-100">{getAdminPassword()}</code></>}
                     </p>
