@@ -106,7 +106,15 @@ function loadState(): RosterState {
   if (typeof window !== "undefined") {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
-      try { return JSON.parse(raw) as RosterState; } catch {}
+      try {
+        const parsed = JSON.parse(raw) as RosterState;
+        parsed.employees = parsed.employees.map(e => ({
+          shifts: {},
+          shiftColors: {},
+          ...e,
+        }));
+        return parsed;
+      } catch {}
     }
   }
   return {
@@ -564,8 +572,8 @@ export function RosterApp() {
                         </td>
                         <td className="px-2 py-2 text-xs text-slate-500 font-mono">{emp.id}</td>
                         {weekDates.map((_, i) => {
-                          const theCode = emp.shifts[i] ?? "";
-                          const theColor = emp.shiftColors[i];
+                          const theCode = emp.shifts?.[i] ?? "";
+                          const theColor = emp.shiftColors?.[i];
                           return (
                             <td key={i} className="px-1.5 py-1.5">
                               {isAdmin ? (
