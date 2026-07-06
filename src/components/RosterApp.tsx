@@ -259,35 +259,41 @@ export function RosterApp() {
         localState.employees = localState.employees.map(e => ({ shifts: {}, shiftColors: {}, ...e }));
       } catch {}
     }
+    const ws = localState?.weekStart ?? iso(startOfSaturday(new Date()));
     if (localState) {
       setState(localState);
+      supabase.from("rosters").upsert(
+        { week_start: ws, employees: localState.employees, departures: localState.departures, arrivals: localState.arrivals },
+        { onConflict: "week_start" }
+      ).then().catch(e => toast.error("Sync error: " + e.message));
+      setLoaded(true);
+    } else {
+      supabase
+        .from("rosters")
+        .select("*")
+        .eq("week_start", ws)
+        .single()
+        .then(({ data }) => {
+          if (data) {
+            setState({
+              weekStart: data.week_start,
+              employees: (data.employees ?? []) as Employee[],
+              departures: (data.departures ?? {}) as Record<number, number>,
+              arrivals: (data.arrivals ?? {}) as Record<number, number>,
+            });
+          } else {
+            const seed = { weekStart: ws, employees: seedEmployees(), departures: {}, arrivals: {} };
+            setState(seed);
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(seed));
+            supabase.from("rosters").upsert(
+              { week_start: ws, employees: seed.employees, departures: seed.departures, arrivals: seed.arrivals },
+              { onConflict: "week_start" }
+            ).then().catch(e => toast.error("Seed sync error: " + e.message));
+          }
+        })
+        .catch(e => toast.error("Fetch error: " + e.message))
+        .finally(() => setLoaded(true));
     }
-    const ws = localState?.weekStart ?? iso(startOfSaturday(new Date()));
-    supabase
-      .from("rosters")
-      .select("*")
-      .eq("week_start", ws)
-      .single()
-      .then(({ data }) => {
-        if (data) {
-          fromSyncRef.current = true;
-          setState({
-            weekStart: data.week_start,
-            employees: (data.employees ?? []) as Employee[],
-            departures: (data.departures ?? {}) as Record<number, number>,
-            arrivals: (data.arrivals ?? {}) as Record<number, number>,
-          });
-        } else if (!localState) {
-          const seed = { weekStart: ws, employees: seedEmployees(), departures: {}, arrivals: {} };
-          setState(seed);
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(seed));
-          supabase.from("rosters").upsert(
-            { week_start: ws, employees: seed.employees, departures: seed.departures, arrivals: seed.arrivals },
-            { onConflict: "week_start" }
-          ).then();
-        }
-      })
-      .finally(() => setLoaded(true));
   }, []);
 
   // Keep localStorage as offline fallback
@@ -307,7 +313,6 @@ export function RosterApp() {
       .single()
       .then(({ data }) => {
         if (cancelled || !data) return;
-        fromSyncRef.current = true;
         setState(prev => {
           if (prev.weekStart !== state.weekStart) return prev;
           return {
@@ -317,12 +322,14 @@ export function RosterApp() {
             arrivals: (data.arrivals ?? {}) as Record<number, number>,
           };
         });
-      });
+      })
+      .catch(e => toast.error("Week fetch error: " + e.message));
     return () => { cancelled = true; };
   }, [state.weekStart]);
 
   // Save to Supabase on state change
   useEffect(() => {
+    if (!loaded) return;
     if (fromSyncRef.current) {
       fromSyncRef.current = false;
       return;
@@ -335,8 +342,8 @@ export function RosterApp() {
         arrivals: state.arrivals,
       },
       { onConflict: "week_start" }
-    ).then();
-  }, [state]);
+    ).then().catch(e => toast.error("Save error: " + e.message));
+  }, [state, loaded]);
 
   // Realtime subscription for cross-device sync
   useEffect(() => {
