@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { Lock, Unlock, Hotel, Plus, Trash2, LogOut, Save, Calendar, Phone, ChevronLeft, ChevronRight, KeyRound, Printer } from "lucide-react";
+import { supabase } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -215,8 +216,25 @@ function AdminShiftCell({ code, color, onUpdate }: {
   );
 }
 
+function LoadingState() {
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-zinc-100 flex items-center justify-center">
+      <div className="text-center space-y-3">
+        <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-slate-300 border-t-slate-900" />
+        <p className="text-sm text-slate-500">Loading roster…</p>
+      </div>
+    </div>
+  );
+}
+
 export function RosterApp() {
-  const [state, setState] = useState<RosterState>(() => loadState());
+  const [state, setState] = useState<RosterState>({
+    weekStart: iso(startOfSaturday(new Date())),
+    employees: [],
+    departures: {},
+    arrivals: {},
+  });
+  const [loaded, setLoaded] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [loginOpen, setLoginOpen] = useState(false);
   const [password, setPassword] = useState("");
@@ -228,18 +246,132 @@ export function RosterApp() {
   const [newEmp, setNewEmp] = useState<{ name: string; category: Category; mobile: string }>({
     name: "", category: "Reception", mobile: "",
   });
+  const fromSyncRef = useRef(false);
+  const mountedRef = useRef(false);
 
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  }, [state]);
-
-  // Set the real current week on the client only, to avoid SSR hydration mismatch.
+  // Mount: load from localStorage (fast), then sync with Supabase
   useEffect(() => {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return; // user already has a saved week
-    setState(s => ({ ...s, weekStart: iso(startOfSaturday(new Date())) }));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    let localState: RosterState | null = null;
+    if (raw) {
+      try {
+        localState = JSON.parse(raw) as RosterState;
+        localState.employees = localState.employees.map(e => ({ shifts: {}, shiftColors: {}, ...e }));
+      } catch {}
+    }
+    if (localState) {
+      setState(localState);
+    }
+    const ws = localState?.weekStart ?? iso(startOfSaturday(new Date()));
+    supabase
+      .from("rosters")
+      .select("*")
+      .eq("week_start", ws)
+      .single()
+      .then(({ data }) => {
+        if (data) {
+          fromSyncRef.current = true;
+          setState({
+            weekStart: data.week_start,
+            employees: (data.employees ?? []) as Employee[],
+            departures: (data.departures ?? {}) as Record<number, number>,
+            arrivals: (data.arrivals ?? {}) as Record<number, number>,
+          });
+        } else if (!localState) {
+          const seed = { weekStart: ws, employees: seedEmployees(), departures: {}, arrivals: {} };
+          setState(seed);
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(seed));
+          supabase.from("rosters").upsert(
+            { week_start: ws, employees: seed.employees, departures: seed.departures, arrivals: seed.arrivals },
+            { onConflict: "week_start" }
+          ).then();
+        }
+      })
+      .finally(() => setLoaded(true));
   }, []);
+
+  // Keep localStorage as offline fallback
+  useEffect(() => {
+    if (!loaded) return;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  }, [state, loaded]);
+
+  // Fetch from Supabase when navigating weeks (skip initial mount)
+  useEffect(() => {
+    if (!mountedRef.current) { mountedRef.current = true; return; }
+    let cancelled = false;
+    supabase
+      .from("rosters")
+      .select("*")
+      .eq("week_start", state.weekStart)
+      .single()
+      .then(({ data }) => {
+        if (cancelled || !data) return;
+        fromSyncRef.current = true;
+        setState(prev => {
+          if (prev.weekStart !== state.weekStart) return prev;
+          return {
+            weekStart: data.week_start,
+            employees: (data.employees ?? []) as Employee[],
+            departures: (data.departures ?? {}) as Record<number, number>,
+            arrivals: (data.arrivals ?? {}) as Record<number, number>,
+          };
+        });
+      });
+    return () => { cancelled = true; };
+  }, [state.weekStart]);
+
+  // Save to Supabase on state change
+  useEffect(() => {
+    if (fromSyncRef.current) {
+      fromSyncRef.current = false;
+      return;
+    }
+    supabase.from("rosters").upsert(
+      {
+        week_start: state.weekStart,
+        employees: state.employees,
+        departures: state.departures,
+        arrivals: state.arrivals,
+      },
+      { onConflict: "week_start" }
+    ).then();
+  }, [state]);
+
+  // Realtime subscription for cross-device sync
+  useEffect(() => {
+    const ws = state.weekStart;
+    const channel = supabase
+      .channel(`roster-${ws}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "rosters",
+          filter: `week_start=eq.${ws}`,
+        },
+        (payload) => {
+          const row = payload.new as any;
+          setState(prev => {
+            const same =
+              JSON.stringify(row.employees) === JSON.stringify(prev.employees) &&
+              JSON.stringify(row.departures) === JSON.stringify(prev.departures) &&
+              JSON.stringify(row.arrivals) === JSON.stringify(prev.arrivals);
+            if (same) return prev;
+            fromSyncRef.current = true;
+            return {
+              weekStart: row.week_start,
+              employees: row.employees ?? [],
+              departures: row.departures ?? {},
+              arrivals: row.arrivals ?? {},
+            };
+          });
+        }
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [state.weekStart]);
 
   const weekDates = useMemo(() => {
     const start = new Date(state.weekStart);
@@ -372,6 +504,7 @@ export function RosterApp() {
     setState(s => ({ ...s, weekStart: iso(startOfSaturday(d)), departures: {}, arrivals: {} }));
   }
 
+  if (!loaded) return <LoadingState />;
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-zinc-100 text-slate-900">
       <Toaster richColors position="top-right" />
@@ -647,7 +780,7 @@ export function RosterApp() {
         </div>
 
         <p className="text-center text-xs text-slate-400 print:hidden">
-          {isAdmin ? "Admin mode · all edits save to your browser." : "View-only mode · sign in as admin to edit."}
+          Changes sync across devices automatically.
         </p>
       </main>
     </div>
