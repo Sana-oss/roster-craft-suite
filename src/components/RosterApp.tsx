@@ -349,6 +349,7 @@ export function RosterApp() {
         .single()
         .then(({ data }) => {
           if (cancelled || !data) return;
+          setLastSync(Date.now());
           setState(prev => {
             if (prev.weekStart !== state.weekStart) return prev;
             return {
@@ -437,29 +438,26 @@ export function RosterApp() {
     return () => { supabase.removeChannel(channel); };
   }, [state.weekStart]);
 
-  // Polling fallback: check DB every 5s for changes from other devices
+  // Polling fallback: check DB every 3s for changes from other devices
+  const [lastSync, setLastSync] = useState(Date.now());
   useEffect(() => {
     const ws = state.weekStart;
     if (!ws) return;
     const poll = setInterval(async () => {
+      const prevJson = JSON.stringify({ emp: state.employees, dep: state.departures, arr: state.arrivals });
       const { error, data } = await supabase
         .from("rosters")
         .select("employees,departures,arrivals")
         .eq("week_start", ws)
         .maybeSingle();
-      if (error) { console.warn("Poll error", ws, error); return; }
-      if (!data) { console.log("Poll - no data for", ws); return; }
-      setState(prev => {
-        const same =
-          JSON.stringify(data.employees) === JSON.stringify(prev.employees) &&
-          JSON.stringify(data.departures) === JSON.stringify(prev.departures) &&
-          JSON.stringify(data.arrivals) === JSON.stringify(prev.arrivals);
-        if (same) { console.log("Poll - same data, no update"); return prev; }
-        console.log("Poll - found different data, applying", data.employees?.length, "employees");
-        fromSyncRef.current = true;
-        return { ...prev, employees: data.employees ?? [], departures: data.departures ?? {}, arrivals: data.arrivals ?? {} };
-      });
-    }, 5000);
+      setLastSync(Date.now());
+      if (error || !data) return;
+      const newJson = JSON.stringify({ emp: data.employees, dep: data.departures, arr: data.arrivals });
+      if (newJson === prevJson) return;
+      console.log("Auto-sync: applying new data", data.employees?.length, "emps");
+      fromSyncRef.current = true;
+      setState(s => ({ ...s, employees: data.employees ?? [], departures: data.departures ?? {}, arrivals: data.arrivals ?? {} }));
+    }, 3000);
     return () => clearInterval(poll);
   }, [state.weekStart]);
 
@@ -615,6 +613,7 @@ export function RosterApp() {
       .then(({ error, data }) => {
         if (error) { toast.error("Sync error: " + error.message); return; }
         if (!data) { toast.message("No data on server"); return; }
+        setLastSync(Date.now());
         fromSyncRef.current = true;
         setState(s => ({
           ...s,
@@ -701,6 +700,7 @@ export function RosterApp() {
                 <Button variant="outline" size="sm" onClick={handleExport}><Save className="h-4 w-4 mr-1.5" /> Export</Button>
                 <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}><Save className="h-4 w-4 mr-1.5" /> Import</Button>
                 <Button variant="outline" size="sm" onClick={forceRefresh} title="Refresh from server"><RotateCw className="h-4 w-4" /></Button>
+                <span className="text-[10px] text-slate-400 hidden sm:inline" title="Auto-sync timer">{Math.round((Date.now()-lastSync)/1000)}s</span>
                 <Dialog open={changePwOpen} onOpenChange={setChangePwOpen}>
                   <DialogTrigger asChild>
                     <Button variant="outline" size="sm"><KeyRound className="h-4 w-4 mr-1.5" /> Change password</Button>
