@@ -440,6 +440,8 @@ export function RosterApp() {
 
   // Polling fallback: check DB every 3s for changes from other devices
   const [lastSync, setLastSync] = useState(Date.now());
+  const [tick, setTick] = useState(0);
+  useEffect(() => { const i = setInterval(() => setTick(t => t+1), 1000); return () => clearInterval(i); }, []);
   useEffect(() => {
     const ws = state.weekStart;
     if (!ws) return;
@@ -700,7 +702,7 @@ export function RosterApp() {
                 <Button variant="outline" size="sm" onClick={handleExport}><Save className="h-4 w-4 mr-1.5" /> Export</Button>
                 <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}><Save className="h-4 w-4 mr-1.5" /> Import</Button>
                 <Button variant="outline" size="sm" onClick={forceRefresh} title="Refresh from server"><RotateCw className="h-4 w-4" /></Button>
-                <span className="text-[10px] text-slate-400 hidden sm:inline" title="Auto-sync timer">{Math.round((Date.now()-lastSync)/1000)}s</span>
+                <span className="text-[10px] text-slate-400" title="Auto-sync timer">{Math.round((Date.now()-lastSync)/1000)}s</span>
                 <Dialog open={changePwOpen} onOpenChange={setChangePwOpen}>
                   <DialogTrigger asChild>
                     <Button variant="outline" size="sm"><KeyRound className="h-4 w-4 mr-1.5" /> Change password</Button>
