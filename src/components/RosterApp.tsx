@@ -456,7 +456,6 @@ export function RosterApp() {
       if (error || !data) return;
       const newJson = JSON.stringify({ emp: data.employees, dep: data.departures, arr: data.arrivals });
       if (newJson === prevJson) return;
-      console.log("Auto-sync: applying new data", data.employees?.length, "emps");
       fromSyncRef.current = true;
       setState(s => ({ ...s, employees: data.employees ?? [], departures: data.departures ?? {}, arrivals: data.arrivals ?? {} }));
     }, 3000);
