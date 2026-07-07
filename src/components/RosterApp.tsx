@@ -654,9 +654,7 @@ export function RosterApp() {
                     <Label htmlFor="pw">Password</Label>
                     <Input id="pw" type="password" value={password} onChange={e => setPassword(e.target.value)}
                       onKeyDown={e => e.key === "Enter" && tryLogin()} placeholder="Enter admin password" autoFocus />
-                    <p className="text-xs text-slate-500">
-                      Shared password: <code className="px-1 py-0.5 rounded bg-slate-100">{adminPasswordRef.current}</code>
-                    </p>
+
                   </div>
                   <DialogFooter>
                     <Button onClick={tryLogin} className="w-full">Unlock</Button>
