@@ -415,6 +415,54 @@ export function RosterApp() {
     return () => { supabase.removeChannel(channel); };
   }, [state.weekStart]);
 
+  // Broadcast channel: applies imported roster data directly on other devices
+  useEffect(() => {
+    const ws = state.weekStart;
+    const channel = supabase
+      .channel("roster-sync")
+      .on("broadcast", { event: "import" }, (payload) => {
+        const d = payload.payload as RosterState;
+        if (d.weekStart !== ws) return;
+        setState(prev => {
+          const same =
+            JSON.stringify(d.employees) === JSON.stringify(prev.employees) &&
+            JSON.stringify(d.departures) === JSON.stringify(prev.departures) &&
+            JSON.stringify(d.arrivals) === JSON.stringify(prev.arrivals);
+          if (same) return prev;
+          fromSyncRef.current = true;
+          return { weekStart: d.weekStart, employees: d.employees, departures: d.departures, arrivals: d.arrivals };
+        });
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [state.weekStart]);
+
+  // Polling fallback: check DB every 5s for changes from other devices
+  useEffect(() => {
+    const ws = state.weekStart;
+    if (!ws) return;
+    const poll = setInterval(async () => {
+      const { error, data } = await supabase
+        .from("rosters")
+        .select("employees,departures,arrivals")
+        .eq("week_start", ws)
+        .maybeSingle();
+      if (error) { console.warn("Poll error", ws, error); return; }
+      if (!data) { console.log("Poll - no data for", ws); return; }
+      setState(prev => {
+        const same =
+          JSON.stringify(data.employees) === JSON.stringify(prev.employees) &&
+          JSON.stringify(data.departures) === JSON.stringify(prev.departures) &&
+          JSON.stringify(data.arrivals) === JSON.stringify(prev.arrivals);
+        if (same) { console.log("Poll - same data, no update"); return prev; }
+        console.log("Poll - found different data, applying", data.employees?.length, "employees");
+        fromSyncRef.current = true;
+        return { ...prev, employees: data.employees ?? [], departures: data.departures ?? {}, arrivals: data.arrivals ?? {} };
+      });
+    }, 5000);
+    return () => clearInterval(poll);
+  }, [state.weekStart]);
+
   const weekDates = useMemo(() => {
     const start = new Date(state.weekStart);
     return Array.from({ length: 7 }, (_, i) => {
@@ -529,8 +577,27 @@ export function RosterApp() {
           toast.error("Invalid backup file");
           return;
         }
-        setState(parsed);
-        toast.success("Backup restored");
+        supabase.from("rosters").upsert(
+          {
+            week_start: parsed.weekStart,
+            employees: parsed.employees,
+            departures: parsed.departures,
+            arrivals: parsed.arrivals,
+          },
+          { onConflict: "week_start" }
+        ).then(({ error }) => {
+          if (error) { console.error("Import upsert error", error); toast.error("Save failed: " + error.message); return; }
+          console.log("Import upsert OK for", parsed.weekStart, "emps:", parsed.employees.length);
+          setState(parsed);
+          const b = parsed;
+          const ch = supabase.channel("roster-sync");
+          ch.subscribe((status) => {
+            if (status === "SUBSCRIBED") {
+              ch.send({ type: "broadcast", event: "import", payload: b });
+            }
+          });
+          toast.success("Backup restored");
+        });
       } catch {
         toast.error("Invalid JSON file");
       }
