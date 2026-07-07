@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
-import { Lock, Unlock, Hotel, Plus, Trash2, LogOut, Save, Calendar, Phone, ChevronLeft, ChevronRight, KeyRound, Printer } from "lucide-react";
+import { Lock, Unlock, Hotel, Plus, Trash2, LogOut, Save, Calendar, Phone, ChevronLeft, ChevronRight, KeyRound, Printer, RotateCw } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -606,6 +606,26 @@ export function RosterApp() {
     e.target.value = "";
   }
 
+  function forceRefresh() {
+    supabase
+      .from("rosters")
+      .select("employees,departures,arrivals")
+      .eq("week_start", state.weekStart)
+      .single()
+      .then(({ error, data }) => {
+        if (error) { toast.error("Sync error: " + error.message); return; }
+        if (!data) { toast.message("No data on server"); return; }
+        fromSyncRef.current = true;
+        setState(s => ({
+          ...s,
+          employees: data.employees ?? [],
+          departures: data.departures ?? {},
+          arrivals: data.arrivals ?? {},
+        }));
+        toast.success("Synced from server (" + (data.employees as any[])?.length + " employees)");
+      });
+  }
+
   function shiftWeek(delta: number) {
     const d = new Date(state.weekStart);
     d.setDate(d.getDate() + delta * 7);
@@ -680,6 +700,7 @@ export function RosterApp() {
                 <input ref={fileInputRef} type="file" accept=".json" onChange={handleImport} className="hidden" />
                 <Button variant="outline" size="sm" onClick={handleExport}><Save className="h-4 w-4 mr-1.5" /> Export</Button>
                 <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}><Save className="h-4 w-4 mr-1.5" /> Import</Button>
+                <Button variant="outline" size="sm" onClick={forceRefresh} title="Refresh from server"><RotateCw className="h-4 w-4" /></Button>
                 <Dialog open={changePwOpen} onOpenChange={setChangePwOpen}>
                   <DialogTrigger asChild>
                     <Button variant="outline" size="sm"><KeyRound className="h-4 w-4 mr-1.5" /> Change password</Button>
