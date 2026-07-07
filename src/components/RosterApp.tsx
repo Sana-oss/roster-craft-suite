@@ -45,18 +45,6 @@ const DEFAULT_PASSWORD = "admin123";
 const STORAGE_KEY = "hotel_roster_v1";
 const PASSWORD_STORAGE_KEY = "admin_custom_password";
 
-function getAdminPassword(): string {
-  const custom = typeof window !== "undefined" ? localStorage.getItem(PASSWORD_STORAGE_KEY) : null;
-  if (custom) return custom;
-  const env = import.meta.env.VITE_ADMIN_PASSWORD;
-  if (env) return env;
-  return DEFAULT_PASSWORD;
-}
-
-function setAdminPassword(pw: string): void {
-  localStorage.setItem(PASSWORD_STORAGE_KEY, pw);
-}
-
 function startOfSaturday(d: Date): Date {
   const date = new Date(d);
   date.setHours(0, 0, 0, 0);
@@ -248,6 +236,11 @@ export function RosterApp() {
   });
   const fromSyncRef = useRef(false);
   const mountedRef = useRef(false);
+  const adminPasswordRef = useRef(
+    (typeof window !== "undefined" ? localStorage.getItem(PASSWORD_STORAGE_KEY) : null)
+    || import.meta.env.VITE_ADMIN_PASSWORD
+    || DEFAULT_PASSWORD
+  );
 
   // Mount: fetch from Supabase first (authoritative), fall back to localStorage
   useEffect(() => {
@@ -321,6 +314,22 @@ export function RosterApp() {
       .finally(() => { if (!cancelled) setLoaded(true); });
 
     return () => { cancelled = true; };
+  }, []);
+
+  // Sync admin password from Supabase (shared across devices)
+  useEffect(() => {
+    supabase
+      .from("admin_config")
+      .select("password")
+      .eq("id", "main")
+      .single()
+      .then(({ data }) => {
+        if (data?.password) {
+          adminPasswordRef.current = data.password;
+          localStorage.setItem(PASSWORD_STORAGE_KEY, data.password);
+        }
+      })
+      .catch(() => {});
   }, []);
 
   // Keep localStorage as offline fallback
@@ -424,7 +433,7 @@ export function RosterApp() {
   }, [state.employees]);
 
   function tryLogin() {
-    if (password === getAdminPassword()) {
+    if (password === adminPasswordRef.current) {
       setIsAdmin(true);
       setLoginOpen(false);
       setPassword("");
@@ -437,11 +446,16 @@ export function RosterApp() {
   function changePassword() {
     if (!newPassword.trim()) { toast.error("Password cannot be empty"); return; }
     if (newPassword !== confirmPassword) { toast.error("Passwords do not match"); return; }
-    setAdminPassword(newPassword);
+    adminPasswordRef.current = newPassword;
+    localStorage.setItem(PASSWORD_STORAGE_KEY, newPassword);
+    supabase
+      .from("admin_config")
+      .upsert({ id: "main", password: newPassword }, { onConflict: "id" })
+      .then(undefined, e => toast.error("Sync error: " + (e as Error).message));
     setChangePwOpen(false);
     setNewPassword("");
     setConfirmPassword("");
-    toast.success("Admin password updated");
+    toast.success("Admin password updated across all devices");
   }
 
   function updateShift(empId: string, dayIdx: number, code: ShiftCode, color?: "M" | "A" | "N" | "MID") {
@@ -641,9 +655,7 @@ export function RosterApp() {
                     <Input id="pw" type="password" value={password} onChange={e => setPassword(e.target.value)}
                       onKeyDown={e => e.key === "Enter" && tryLogin()} placeholder="Enter admin password" autoFocus />
                     <p className="text-xs text-slate-500">
-                      {typeof window !== "undefined" && localStorage.getItem(PASSWORD_STORAGE_KEY)
-                        ? "Custom password is set"
-                        : <>Demo password: <code className="px-1 py-0.5 rounded bg-slate-100">{getAdminPassword()}</code></>}
+                      Shared password: <code className="px-1 py-0.5 rounded bg-slate-100">{adminPasswordRef.current}</code>
                     </p>
                   </div>
                   <DialogFooter>
