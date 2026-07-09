@@ -19,6 +19,7 @@ type ShiftCode = string;
 const SHIFT_OPTIONS: { code: ShiftCode; label: string; hours?: string }[] = [
   { code: "DO", label: "Day Off", hours: "" },
   { code: "PL", label: "Paid Leave", hours: "" },
+  { code: "PH", label: "Public Holiday", hours: "" },
   { code: "", label: "Clear", hours: "" },
 ];
 
@@ -117,6 +118,7 @@ function loadState(): RosterState {
 function shiftClasses(code: ShiftCode, color?: "M" | "A" | "N" | "MID"): string {
   if (code === "DO") return "bg-zinc-200 text-zinc-600 border-zinc-300";
   if (code === "PL") return "bg-zinc-700 text-white border-zinc-800";
+  if (code === "PH") return "bg-yellow-200 text-yellow-900 border-yellow-300";
   if (color) {
     switch (color) {
       case "M": return "bg-amber-100 text-amber-900 border-amber-200";
@@ -144,7 +146,7 @@ function AdminShiftCell({ code, color, onUpdate }: {
 
   useEffect(() => {
     if (open) {
-      const isCustom = code && code !== "DO" && code !== "PL";
+      const isCustom = code && code !== "DO" && code !== "PL" && code !== "PH";
       setInputVal(isCustom ? code : "");
       setSelectedColor(isCustom ? color : undefined);
     }
@@ -191,6 +193,7 @@ function AdminShiftCell({ code, color, onUpdate }: {
           <div className="flex gap-1.5">
             <Button size="sm" variant="outline" className="flex-1 h-8 text-xs" onClick={() => { onUpdate("DO", undefined); setOpen(false); }}>DO</Button>
             <Button size="sm" variant="outline" className="flex-1 h-8 text-xs" onClick={() => { onUpdate("PL", undefined); setOpen(false); }}>PL</Button>
+            <Button size="sm" variant="outline" className="flex-1 h-8 text-xs bg-yellow-100 hover:bg-yellow-200 border-yellow-300" onClick={() => { onUpdate("PH", undefined); setOpen(false); }}>PH</Button>
             <Button size="sm" variant="outline" className="flex-1 h-8 text-xs" onClick={() => { onUpdate("", undefined); setOpen(false); }}>Clear</Button>
           </div>
           {inputVal.trim() && (
@@ -689,7 +692,7 @@ export function RosterApp() {
                 <ChevronRight className="h-4 w-4" />
               </button>}
             </div>
-            <Button onClick={() => window.print()} size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-full shadow-sm gap-1.5">
+            <Button onClick={() => setTimeout(() => { try { window.print(); } catch (e) { console.warn("Print failed", e); } }, 100)} size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-full shadow-sm gap-1.5">
               <Printer className="h-4 w-4" /> Print
             </Button>
             {isAdmin ? (
